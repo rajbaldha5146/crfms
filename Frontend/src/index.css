@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: #f8fafc;
+  --color-primary-100: #f1f5f9;
+  --color-primary-200: #e2e8f0;
+  --color-primary-300: #cbd5e1;
+  --color-primary-400: #94a3b8;
+  --color-primary-500: #64748b;
+  --color-primary-600: #475569;
+  --color-primary-700: #334155;
+  --color-primary-800: #1e293b;
+  --color-primary-900: #0f172a;
+  --color-primary-950: #020617;
+
+  --color-accent-50: #ecfdf5;
+  --color-accent-100: #d1fae5;
+  --color-accent-200: #a7f3d0;
+  --color-accent-300: #6ee7b7;
+  --color-accent-400: #34d399;
+  --color-accent-500: #10b981;
+  --color-accent-600: #059669;
+  --color-accent-700: #047857;
+  --color-accent-800: #065f46;
+  --color-accent-900: #064e3b;
+  --color-accent-950: #022c22;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 text-[15px] antialiased selection:bg-slate-900 selection:text-white;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight text-slate-900;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold text-[16px]
+           hover:bg-slate-800 active:scale-95 transition-all duration-200 
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-slate-900 border border-slate-200 px-5 py-2.5 rounded-xl font-bold text-[16px]
+           hover:bg-slate-50 active:scale-95 transition-all duration-200;
+  }
+
+  .input-field {
+    @apply w-full border border-slate-300 rounded-xl p-3.5 outline-none text-[16px]
+           focus:border-slate-900 transition-all duration-200 placeholder:text-slate-400;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl border border-slate-200 p-8 shadow-sm;
+  }
+
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-md rounded-2xl border border-white/20 shadow-xl;
+  }
+
+  /* Gradient Spinner Logic */
+  .spinner-gradient {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: conic-gradient(#ffffff 20%, transparent);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #fff 0);
+    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #fff 0);
+    animation: spin 0.8s linear infinite;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
