@@ -109,7 +109,7 @@ public class AuthController : ControllerBase
     {
         // Extracts the user's email from the decrypted JWT token stored in the HttpOnly cookie
         var email = User.FindFirstValue(ClaimTypes.Email);
-        
+
         if (string.IsNullOrEmpty(email))
         {
             throw new UnauthorizedException("User is not authenticated");
@@ -118,5 +118,34 @@ public class AuthController : ControllerBase
         var result = await _authService.GetMeAsync(email);
 
         return Ok(ApiResponse<UserResponseDto>.SuccessResponse(result, "User retrieved successfully"));
+    }
+
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult>
+    ChangePassword(
+        ChangePasswordRequestDto request)
+        {
+            var userId =
+                UserClaimsHelper
+                    .GetUserId(User);
+
+            await _authService
+                .ChangePasswordAsync(
+                    userId,
+                    request);
+
+            return Ok(
+                ApiResponse<object>
+                .SuccessResponse(
+                    "Password changed successfully"));
+        }
+
+    [HttpGet("generate-hash")]
+    public IActionResult GenerateHash()
+    {
+        var hash = BCrypt.Net.BCrypt.HashPassword("Password@1234");
+
+        return Ok(hash);
     }
 }

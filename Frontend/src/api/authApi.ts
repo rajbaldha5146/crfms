@@ -13,35 +13,52 @@ export interface LoginResponse {
     name: string;
     email: string;
     role: string;
+    isFirstLogin: boolean;
   };
 }
 
 export const loginUser = async (
   payload: LoginRequest
 ): Promise<LoginResponse> => {
-  const response = await axiosInstance.post(
-    "/Auth/login",
-    payload,
-    {
-      withCredentials: true,
-    }
-  );
+  const response = await axiosInstance.post("/Auth/login", payload, {
+    withCredentials: true,
+  });
 
   return response.data;
 };
 
-export const logoutUser = async (): Promise<{ success: boolean; message: string }> => {
+export const logoutUser = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
   const response = await axiosInstance.post("/Auth/logout");
   return response.data;
 };
 
 export const getMe = async (): Promise<LoginResponse> => {
-  const response = await axiosInstance.get(
-    "/Auth/me",
-    {
-      withCredentials: true,
-    }
-  );
+  const response = await axiosInstance.get("/Auth/me", {
+    withCredentials: true,
+  });
+
+  return response.data;
+};
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export const changePassword =
+  async (
+    payload:
+      ChangePasswordRequest
+  ) => {
+
+  const response =
+    await axiosInstance.post(
+      "/auth/change-password",
+      payload
+    );
 
   return response.data;
 };

@@ -11,4 +11,5 @@ public class LogInResponseDto
     [System.Text.Json.Serialization.JsonIgnore]
     public string RefreshToken { get; set; } = string.Empty;
     public DateTime AccessTokenExpiresAt { get; set; }
+    public bool IsFirstLogin { get; set; }
 }

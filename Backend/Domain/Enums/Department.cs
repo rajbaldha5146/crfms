@@ -2,7 +2,7 @@ namespace Domain.Enums;
 
 public enum Department
 {
-    Mobile,
+    Mobile = 1,
     Java,
     Microsoft
 }

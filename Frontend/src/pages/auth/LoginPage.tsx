@@ -10,7 +10,7 @@ const LoginPage = () => {
 
   const { login, isAuthenticated } = useAuthStore();
   const { loading, showToast } = useUIStore();
-  
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,7 +24,7 @@ const LoginPage = () => {
 
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,15}$/;
-  
+
   const isEmailValid = emailRegex.test(email);
   const isPasswordValid = passwordRegex.test(password);
 
@@ -53,7 +53,11 @@ const LoginPage = () => {
 
       login(response.data);
       showToast("Welcome back!", "success");
-      navigate("/dashboard");
+      if (response.data.isFirstLogin) {
+        navigate("/change-password");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err: unknown) {
       // Automatic error handling is now performed by axiosInstance interceptor
       console.error("Login attempt failed:", err);
@@ -68,7 +72,9 @@ const LoginPage = () => {
       <div className="card w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-extrabold mb-2">Welcome Back</h1>
-          <p className="text-slate-500 text-sm">Please enter your details to sign in</p>
+          <p className="text-slate-500 text-sm">
+            Please enter your details to sign in
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -84,7 +90,9 @@ const LoginPage = () => {
               className="input-field"
             />
             {email && !isEmailValid && (
-              <p className="text-rose-500 text-xs mt-2 font-medium">Please enter a valid email address</p>
+              <p className="text-rose-500 text-xs mt-2 font-medium">
+                Please enter a valid email address
+              </p>
             )}
           </div>
 
@@ -115,7 +123,8 @@ const LoginPage = () => {
             </div>
             {password && !isPasswordValid && (
               <p className="text-rose-500 text-xs mt-2 font-medium leading-relaxed">
-                Password must contain at least 8 characters, including uppercase, lowercase, numbers, and symbols.
+                Password must contain at least 8 characters, including
+                uppercase, lowercase, numbers, and symbols.
               </p>
             )}
           </div>

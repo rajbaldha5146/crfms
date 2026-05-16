@@ -1,6 +1,8 @@
 using System.Text;
 using API.Middlewares;
+using Application.Hubs;
 using Application.Interfaces;
+using Application.Services;
 using Data.Context;
 using Infrastructure.Data;
 using Infrastructure.ExternalServices;
@@ -13,12 +15,28 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ==========================================
+// 1. Core Services (Controllers, Swagger, SignalR)
+// ==========================================
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSignalR();
 
+// ==========================================
+// 2. Dependency Injection (Business Logic & Data)
+// ==========================================
 builder.Services.AddScoped<UserSeeder>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
+builder.Services.AddScoped<IAdminLookupService, AdminLookupService>();
+builder.Services.AddScoped<IAdminUserService, AdminUserService>();
+builder.Services.AddScoped<IFeedbackService, FeedbackService>();
+builder.Services.AddScoped<IProjectService, ProjectService>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IPmHierarchyService, PmHierarchyService>();
+builder.Services.AddScoped<IPmProjectService, PmProjectService>();
 
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<ILoginRepository, LoginRepository>();
@@ -26,33 +44,33 @@ builder.Services.AddScoped<ICommonRepository, CommonRepository>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
-builder.Services.AddAuthorization();
 
-var allowedOrigins = builder.Configuration
-    .GetSection("Cors:AllowedOrigins")
-    .Get<string[]>();
-
-//cors
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowFrontend",
-        policy =>
-        {
-            policy.WithOrigins(allowedOrigins!)
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
-        });
-});
-
-//db context
+// ==========================================
+// 3. Database Context
+// ==========================================
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    options.UseNpgsql(
-        builder.Configuration.GetConnectionString("DefaultConnection"));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
-//modal state valid or not
+// ==========================================
+// 4. CORS Policy
+// ==========================================
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins(allowedOrigins!)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials(); // Required for SignalR with Cookies/Auth
+    });
+});
+
+// ==========================================
+// 5. Custom Validation Response
+// ==========================================
 builder.Services.Configure<ApiBehaviorOptions>(options =>
 {
     options.InvalidModelStateResponseFactory = context =>
@@ -64,135 +82,90 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
                 kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage).ToArray()
             );
 
-        var response = new
-        {
-            success = false,
-            message = "Validation Failed",
-            errors
-        };
-
-        return new BadRequestObjectResult(response);
+        return new BadRequestObjectResult(new { success = false, message = "Validation Failed", errors });
     };
 });
 
-//add authentication
-builder.Services
-    .AddAuthentication(
-        JwtBearerDefaults.AuthenticationScheme)
+// ==========================================
+// 6. Authentication & JWT Configuration
+// ==========================================
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters =
-            new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
-                ValidateIssuerSigningKey = true,
-
-                ValidIssuer =
-                    builder.Configuration["jwtSettings:Issuer"],
-
-                ValidAudience =
-                    builder.Configuration["jwtSettings:Audience"],
-
-                IssuerSigningKey =
-                    new SymmetricSecurityKey(
-                        Encoding.UTF8.GetBytes(
-                            builder.Configuration["jwtSettings:SecretKey"]!))
-            };
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["jwtSettings:Issuer"],
+            ValidAudience = builder.Configuration["jwtSettings:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["jwtSettings:SecretKey"]!)),
+            ClockSkew = TimeSpan.Zero
+        };
 
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
             {
-                context.Token =
-                    context.Request.Cookies["accessToken"];
-
+                // Read token from cookie instead of Authorization Header
+                context.Token = context.Request.Cookies["accessToken"];
                 return Task.CompletedTask;
             },
-
             OnChallenge = async context =>
             {
                 context.HandleResponse();
-
                 context.Response.StatusCode = 401;
-                context.Response.ContentType = "application/json";
-
-                await context.Response.WriteAsJsonAsync(
-                    new
-                    {
-                        success = false,
-                        statusCode = 401,
-                        message = "Unauthorized",
-                        timestamp = DateTime.UtcNow
-                    });
+                await context.Response.WriteAsJsonAsync(new { success = false, statusCode = 401, message = "Unauthorized", timestamp = DateTime.UtcNow });
             },
-
             OnForbidden = async context =>
             {
                 context.Response.StatusCode = 403;
-                context.Response.ContentType = "application/json";
-
-                await context.Response.WriteAsJsonAsync(
-                    new
-                    {
-                        success = false,
-                        statusCode = 403,
-                        message = "You do not have permission to access this resource",
-                        timestamp = DateTime.UtcNow
-                    });
+                await context.Response.WriteAsJsonAsync(new { success = false, statusCode = 403, message = "You are not allowed to access this resource.", timestamp = DateTime.UtcNow });
             }
         };
     });
 
-//role policy
+// ==========================================
+// 7. Authorization Policies
+// ==========================================
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy(
-        "RequireAdmin",
-        policy => policy.RequireRole("Admin"));
-
-    options.AddPolicy(
-        "RequirePM",
-        policy => policy.RequireRole("Pm"));
-
-    options.AddPolicy(
-        "RequireTL",
-        policy => policy.RequireRole("Tl"));
-
-    options.AddPolicy(
-        "RequireSenior",
-        policy => policy.RequireRole("SeniorDeveloper"));
-
-    options.AddPolicy(
-        "RequireJunior",
-        policy => policy.RequireRole("JuniorDeveloper"));
+    options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("RequirePM", policy => policy.RequireRole("Pm"));
+    options.AddPolicy("RequireTL", policy => policy.RequireRole("Tl"));
+    options.AddPolicy("RequireSenior", policy => policy.RequireRole("SeniorDeveloper"));
+    options.AddPolicy("RequireJunior", policy => policy.RequireRole("JuniorDeveloper"));
 });
-
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ==========================================
+// 8. MIDDLEWARE PIPELINE (Order is Critical)
+// ==========================================
+
+// 1. Global Exception Handling
+app.UseMiddleware<ExceptionMiddleware>();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-
+// 2. Protocol Security
 app.UseHttpsRedirection();
 
-app.UseHttpsRedirection();
-
+// 3. CORS (Must be before Auth and SignalR)
 app.UseCors("AllowFrontend");
 
+// 4. Authentication & Authorization
 app.UseAuthentication();
-
 app.UseAuthorization();
 
-app.UseMiddleware<ExceptionMiddleware>();
-
+// 5. Endpoints (SignalR must follow Auth)
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 // using (var scope = app.Services.CreateScope())
 // {
@@ -216,3 +189,4 @@ app.MapControllers();
 // }
 
 app.Run();
+
