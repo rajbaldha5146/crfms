@@ -391,9 +391,7 @@ GetProjectHierarchyAsync(
 
         var allMappings =
             await _hierarchyRepository
-                .FindAsync(x =>
-                    assignedUserIds.Contains(
-                        x.ChildUserId));
+                .GetAllAsync();
 
         // Get Roles
 
@@ -433,7 +431,7 @@ GetProjectHierarchyAsync(
 
         List<int> accessibleUserIds;
 
-        // PM sees complete project hierarchy
+        // PM sees full hierarchy
 
         if (loggedInUser.RoleId ==
             pmRoleId)
@@ -442,14 +440,14 @@ GetProjectHierarchyAsync(
                 assignedUserIds;
         }
 
-        // Other roles see only subtree
+        // Other users see subtree
 
         else
         {
             accessibleUserIds =
                 new List<int>
                 {
-                loggedInUserId
+                    loggedInUserId
                 };
 
             accessibleUserIds
@@ -461,6 +459,9 @@ GetProjectHierarchyAsync(
             accessibleUserIds =
                 accessibleUserIds
                     .Distinct()
+                    .Where(x =>
+                        assignedUserIds
+                            .Contains(x))
                     .ToList();
         }
 
@@ -508,19 +509,57 @@ GetProjectHierarchyAsync(
             users.ToDictionary(
                 x => x.Id);
 
-        // Filter Hierarchy Mappings
+        // Build Visible Hierarchy
 
         var mappings =
-            allMappings
-                .Where(x =>
-                    accessibleUserIds
-                        .Contains(
-                            x.ParentUserId)
-                    &&
-                    accessibleUserIds
-                        .Contains(
-                            x.ChildUserId))
-                .ToList();
+            new List<HierarchyMapping>();
+
+        foreach (var childUserId in accessibleUserIds)
+        {
+            var currentChildId =
+                childUserId;
+
+            while (true)
+            {
+                var parentMapping =
+                    allMappings
+                        .FirstOrDefault(x =>
+                            x.ChildUserId ==
+                            currentChildId);
+
+                if (parentMapping == null)
+                {
+                    break;
+                }
+
+                // Parent visible
+
+                if (accessibleUserIds
+                    .Contains(
+                        parentMapping
+                            .ParentUserId))
+                {
+                    mappings.Add(
+                        new HierarchyMapping
+                        {
+                            ParentUserId =
+                                parentMapping
+                                    .ParentUserId,
+
+                            ChildUserId =
+                                childUserId
+                        });
+
+                    break;
+                }
+
+                // Move upward
+
+                currentChildId =
+                    parentMapping
+                        .ParentUserId;
+            }
+        }
 
         // Feedbacks
 
@@ -602,7 +641,7 @@ GetProjectHierarchyAsync(
             rootUsers =
                 new List<int>
                 {
-                loggedInUserId
+                    loggedInUserId
                 };
         }
 

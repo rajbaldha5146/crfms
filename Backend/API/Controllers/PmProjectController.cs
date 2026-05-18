@@ -85,16 +85,18 @@ AssignProjectMembers(
             UserClaimsHelper
                 .GetUserId(User);
 
-        await _pmProjectService
-            .RemoveMemberFromProjectAsync(
-                projectId,
-                userId,
-                pmUserId);
+        var result =
+            await _pmProjectService
+                .RemoveMemberFromProjectAsync(
+                    projectId,
+                    userId,
+                    pmUserId);
 
         return Ok(
-            ApiResponse<string>
+            ApiResponse<
+                RemoveProjectMemberResponseDto>
                 .SuccessResponse(
-                    null!,
+                    result,
                     "Member removed from project successfully"));
     }
 }

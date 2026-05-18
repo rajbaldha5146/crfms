@@ -4,7 +4,7 @@ import { FolderKanban, Plus, Users, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import Header from "../../../components/layout/Header";
+import PmHeader from "../../../components/layout/PmHeader";
 import { createProject, getProjects } from "../../../api/pmProjectApi";
 import { useUIStore } from "../../../store/useUIStore";
 
@@ -81,7 +81,7 @@ const PMProjectManagementPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header
+      <PmHeader
         title="Project Management"
         subtitle="Create projects and manage project members"
       />

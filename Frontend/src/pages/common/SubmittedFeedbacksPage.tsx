@@ -1,163 +1,256 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Clock, CheckCircle2, FileText } from "lucide-react";
+import { Clock, CheckCircle2, FileText, Send, FilterX } from "lucide-react";
 import type { SubmittedFeedbackCardDto } from "../../types/feedback";
-import { getSubmittedFeedbacks } from "../../api/feedbackApi";
+import { getSubmittedFeedbacks, type DropdownOption } from "../../api/feedbackApi";
 import Header from "../../components/layout/Header";
-import Button from "../../components/common/Button";
 import ProjectFeedbackCard from "../../components/project/ProjectFeedbackCard";
 
 const SubmittedFeedbacksPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const status = searchParams.get("status") ?? "open";
+  // URL state
+  const statusTab = searchParams.get("status") ?? "all";
+  const projectParam = searchParams.get("projectId");
+  const revieweeParam = searchParams.get("revieweeId");
 
   const [feedbacks, setFeedbacks] = useState<SubmittedFeedbackCardDto[]>([]);
+  const [projects, setProjects] = useState<DropdownOption[]>([]);
+  const [reviewees, setReviewees] = useState<DropdownOption[]>([]);
+
   const [isLoading, setIsLoading] = useState(false);
   const [openCount, setOpenCount] = useState(0);
   const [resolvedCount, setResolvedCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Load Feedbacks
   const loadFeedbacks = async () => {
     try {
       setIsLoading(true);
 
-      const response = await getSubmittedFeedbacks(status);
-      setFeedbacks(response.data);
+      const response = await getSubmittedFeedbacks({
+        status: statusTab === "all" ? undefined : statusTab,
+        projectId: projectParam ? Number(projectParam) : undefined,
+        revieweeId: revieweeParam ? Number(revieweeParam) : undefined,
+        page: 1,
+        pageSize: 100,
+      });
 
-      // Total Counts
-      const openResponse = await getSubmittedFeedbacks("open");
-      const resolvedResponse = await getSubmittedFeedbacks("resolved");
-
-      setOpenCount(openResponse.data.length);
-      setResolvedCount(resolvedResponse.data.length);
+      const d = response.data;
+      setFeedbacks(d?.items ?? []);
+      setOpenCount(d?.openCount ?? 0);
+      setResolvedCount(d?.resolvedCount ?? 0);
+      setTotalCount(d?.totalCount ?? 0);
+      setProjects(d?.projects ?? []);
+      setReviewees(d?.reviewees ?? []);
+    } catch (err) {
+      console.error("Failed to load submitted feedbacks", err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Change Filter
-  const handleFilterChange = (value: "open" | "resolved") => {
-    setSearchParams({ status: value });
+  // Change Tabs
+  const handleTabChange = (value: "all" | "open" | "resolved") => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value === "all") newParams.delete("status");
+    else newParams.set("status", value);
+    setSearchParams(newParams);
+  };
+
+  const handleFilterChange = (key: string, value: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value) newParams.set(key, value);
+    else newParams.delete(key);
+    setSearchParams(newParams);
+  };
+
+  const clearFilters = () => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete("projectId");
+    newParams.delete("revieweeId");
+    setSearchParams(newParams);
   };
 
   // Initial Load
   useEffect(() => {
     loadFeedbacks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [statusTab, projectParam, revieweeParam]);
+
+  const hasActiveFilters = projectParam || revieweeParam;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
       <Header
-        title="My Submitted Feedbacks"
-        subtitle="Track feedbacks submitted by you"
+        title="Submitted Feedbacks"
+        subtitle="Track feedbacks you have given to others"
       />
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {/* Stats Bar */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:divide-x divide-slate-100">
-            {/* Open */}
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
-                <Clock size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                  Open Feedbacks
-                </p>
-                <p className="text-[28px] font-bold text-slate-900 leading-none mt-1">
-                  {openCount}
-                </p>
-              </div>
-            </div>
+      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 flex flex-col">
+        {/* Title & Stats */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+              My Submissions
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Review and track the status of feedback you've shared.
+            </p>
+          </div>
 
-            {/* Resolved */}
-            <div className="flex items-center gap-4 md:pl-6">
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                <CheckCircle2 size={20} className="text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                  Resolved Feedbacks
-                </p>
-                <p className="text-[28px] font-bold text-slate-900 leading-none mt-1">
-                  {resolvedCount}
-                </p>
-              </div>
-            </div>
-
-            {/* Total */}
-            <div className="flex items-center gap-4 md:pl-6">
-              <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                <FileText size={20} className="text-slate-600" />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                  Total Feedbacks
-                </p>
-                <p className="text-[28px] font-bold text-slate-900 leading-none mt-1">
-                  {openCount + resolvedCount}
-                </p>
-              </div>
-            </div>
+          <div className="flex items-center gap-2 bg-white border border-slate-200 p-1 rounded-xl shadow-sm">
+            <button
+              onClick={() => handleTabChange("all")}
+              className={`px-4 py-2 text-[13px] font-semibold rounded-lg transition-all ${
+                statusTab === "all"
+                  ? "bg-slate-900 text-white shadow-md"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              All
+              <span
+                className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] ${
+                  statusTab === "all"
+                    ? "bg-white/20 text-white"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {totalCount}
+              </span>
+            </button>
+            <button
+              onClick={() => handleTabChange("open")}
+              className={`px-4 py-2 text-[13px] font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                statusTab === "open"
+                  ? "bg-amber-100 text-amber-900 shadow-sm ring-1 ring-amber-200/50"
+                  : "text-slate-600 hover:bg-amber-50"
+              }`}
+            >
+              <Clock size={14} className={statusTab === "open" ? "text-amber-600" : ""} />
+              Open
+              <span
+                className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${
+                  statusTab === "open"
+                    ? "bg-amber-200/50 text-amber-900"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {openCount}
+              </span>
+            </button>
+            <button
+              onClick={() => handleTabChange("resolved")}
+              className={`px-4 py-2 text-[13px] font-semibold rounded-lg transition-all flex items-center gap-2 ${
+                statusTab === "resolved"
+                  ? "bg-emerald-100 text-emerald-900 shadow-sm ring-1 ring-emerald-200/50"
+                  : "text-slate-600 hover:bg-emerald-50"
+              }`}
+            >
+              <CheckCircle2 size={14} className={statusTab === "resolved" ? "text-emerald-600" : ""} />
+              Resolved
+              <span
+                className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] ${
+                  statusTab === "resolved"
+                    ? "bg-emerald-200/50 text-emerald-900"
+                    : "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {resolvedCount}
+              </span>
+            </button>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-3 mb-6">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Filter:
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant={status === "open" ? "primary" : "secondary"}
-              size="sm"
-              onClick={() => handleFilterChange("open")}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 shadow-sm flex flex-wrap gap-4 items-center">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1.5">
+              Project
+            </label>
+            <select
+              value={projectParam ?? ""}
+              onChange={(e) => handleFilterChange("projectId", e.target.value)}
+              className="w-full h-9 px-3 text-[13px] bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
             >
-              Open
-            </Button>
-
-            <Button
-              variant={status === "resolved" ? "primary" : "secondary"}
-              size="sm"
-              onClick={() => handleFilterChange("resolved")}
-            >
-              Resolved
-            </Button>
+              <option value="">All Projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </div>
+
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1.5">
+              Reviewee
+            </label>
+            <select
+              value={revieweeParam ?? ""}
+              onChange={(e) => handleFilterChange("revieweeId", e.target.value)}
+              className="w-full h-9 px-3 text-[13px] bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-none"
+            >
+              <option value="">All Team Members</option>
+              {reviewees.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {hasActiveFilters && (
+            <div className="flex items-end h-[58px]">
+              <button
+                onClick={clearFilters}
+                className="h-9 px-4 flex items-center gap-2 text-[13px] font-medium text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              >
+                <FilterX size={14} />
+                Clear
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Content */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-32 gap-4">
+          <div className="flex-1 flex flex-col items-center justify-center py-32 gap-4">
             <div className="spinner-gradient" />
             <p className="text-[13px] text-slate-400 font-medium">Loading feedbacks…</p>
           </div>
         ) : feedbacks.length === 0 ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-100 mx-auto flex items-center justify-center mb-4">
-              <FileText size={28} className="text-slate-400" />
+          <div className="flex-1 bg-white border border-slate-200 rounded-2xl flex flex-col items-center justify-center p-12 text-center shadow-sm">
+            <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-6">
+              <Send size={28} className="text-slate-300" />
             </div>
             <h2 className="text-[18px] font-semibold text-slate-900">
               No Feedbacks Found
             </h2>
             <p className="text-[13px] text-slate-500 mt-2 max-w-sm mx-auto">
-              No feedbacks available in this section. Check back later or change the filter.
+              {hasActiveFilters
+                ? "No feedbacks match your current filters. Try clearing them to see more results."
+                : `You haven't submitted any ${statusTab === "all" ? "" : statusTab} feedbacks yet.`}
             </p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="mt-6 px-4 py-2 text-[13px] font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 pb-12">
             {feedbacks.map((feedback) => (
-              <div
+              <ProjectFeedbackCard 
                 key={feedback.id}
-                onClick={() => navigate(`/feedbacks/${feedback.id}`)}
-                className="cursor-pointer"
-              >
-                <ProjectFeedbackCard feedback={feedback} />
-              </div>
+                feedback={feedback} 
+                isSubmittedView={true}
+                onView={() => navigate(`/feedbacks/${feedback.id}`)}
+              />
             ))}
           </div>
         )}

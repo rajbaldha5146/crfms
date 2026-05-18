@@ -7,13 +7,34 @@ interface ApiResponse<T> {
   data: T;
 }
 
-export const getSubmittedFeedbacks = async (status?: string) => {
+// Filter for submitted feedbacks
+export interface SubmittedFeedbackFilter {
+  status?: string;
+  projectId?: number;
+  revieweeId?: number;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// Aggregated response for submitted feedbacks
+export interface SubmittedFeedbackResponseDto {
+  items: SubmittedFeedbackCardDto[];
+  openCount: number;
+  resolvedCount: number;
+  totalCount: number;
+  projects: DropdownOption[];
+  reviewees: DropdownOption[];
+  totalPages: number;
+  currentPage: number;
+}
+
+export const getSubmittedFeedbacks = async (filter: SubmittedFeedbackFilter = {}) => {
   const response = await axiosInstance.get<
-    ApiResponse<SubmittedFeedbackCardDto[]>
+    ApiResponse<SubmittedFeedbackResponseDto>
   >("/feedback/submitted", {
-    params: {
-      status,
-    },
+    params: filter,
   });
 
   return response.data;
@@ -94,13 +115,40 @@ export interface ReceivedFeedbackCardDto {
   resolutionCreatedAt?: string | null;
 }
 
-export const getReceivedFeedbacks = async (status?: string) => {
+// Filter for received feedbacks
+export interface ReceivedFeedbackFilter {
+  status?: string;
+  projectId?: number;
+  reviewerId?: number;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// Dropdown option
+export interface DropdownOption {
+  id: number;
+  name: string;
+}
+
+// Aggregated response
+export interface ReceivedFeedbackResponseDto {
+  items: ReceivedFeedbackCardDto[];
+  openCount: number;
+  resolvedCount: number;
+  totalCount: number;
+  projects: DropdownOption[];
+  reviewers: DropdownOption[];
+  totalPages: number;
+  currentPage: number;
+}
+
+export const getReceivedFeedbacks = async (filter: ReceivedFeedbackFilter = {}) => {
   const response = await axiosInstance.get<
-    ApiResponse<ReceivedFeedbackCardDto[]>
+    ApiResponse<ReceivedFeedbackResponseDto>
   >("/feedback/received", {
-    params: {
-      status,
-    },
+    params: filter,
   });
 
   return response.data;
@@ -122,14 +170,29 @@ export const resolveFeedback = async (
   return response.data;
 };
 
-export const getHierarchyFeedbacks = async (status?: string, projectId?: number) => {
+// Hierarchy filters
+export interface FeedbackHierarchyFilter {
+  status?: string;
+  projectId?: number;
+  reviewerId?: number;
+  revieweeId?: number;
+  startDate?: string; // ISO string e.g. "2026-05-01"
+  endDate?: string;
+}
+
+// Hierarchy response (stats + list in one call)
+export interface FeedbackHierarchyResponseDto {
+  feedbacks: ReceivedFeedbackCardDto[];
+  openCount: number;
+  resolvedCount: number;
+  totalCount: number;
+}
+
+export const getHierarchy = async (filter: FeedbackHierarchyFilter = {}) => {
   const response = await axiosInstance.get<
-    ApiResponse<ReceivedFeedbackCardDto[]>
+    ApiResponse<FeedbackHierarchyResponseDto>
   >("/feedback/hierarchy", {
-    params: {
-      status,
-      projectId,
-    },
+    params: filter,
   });
 
   return response.data;

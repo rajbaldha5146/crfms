@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
 
-import Header from "../../../components/layout/Header";
+import PmHeader from "../../../components/layout/PmHeader";
 import ConfirmDialog from "../../../components/common/ConfirmDialog";
 import {
   getProjectHierarchy,
@@ -177,8 +177,21 @@ const PMProjectMembersPage = () => {
       setLoading(true);
       setGlobalLoading(true);
 
-      await removeMember(Number(projectId), memberToRemove.userId);
+      const response = await removeMember(Number(projectId), memberToRemove.userId);
       showToast("Member removed successfully", "success");
+
+      // Show hierarchy warnings as notification cards
+      const warnings: string[] = response?.data?.warnings ?? [];
+      warnings.forEach((msg) => {
+        addNotification({
+          id: Date.now() + Math.random(),
+          title: "Hierarchy Warning",
+          message: msg,
+          type: "warning",
+          createdAt: new Date().toISOString(),
+        });
+      });
+
       await load();
     } catch (error) {
       // showToast("Failed to remove member", "error");
@@ -191,7 +204,7 @@ const PMProjectMembersPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header
+      <PmHeader
         title={project?.name ?? "Project Members"}
         subtitle="Manage project team members and assignments"
       />

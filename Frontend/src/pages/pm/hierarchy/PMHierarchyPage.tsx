@@ -6,7 +6,7 @@ import {
   changeReportingPerson,
   getPmHierarchy,
 } from "../../../api/pmHierarchyApi";
-import Header from "../../../components/layout/Header";
+import PmHeader from "../../../components/layout/PmHeader";
 
 import type { HierarchyNodeDto } from "../../../types/hierarchy";
 
@@ -87,7 +87,7 @@ const PMHierarchyPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header
+      <PmHeader
         title="Team Hierarchy"
         subtitle="Manage reporting structure, reorganize teams, and visualize your complete engineering hierarchy"
       />
@@ -183,9 +183,13 @@ const PMHierarchyPage = () => {
                       (x) => x.value === Number(selectedEmployeeId)
                     ) || null
                   }
-                  onChange={(selected) =>
-                    setSelectedEmployeeId(selected?.value.toString() || "")
-                  }
+                  onChange={(selected) => {
+                    const newId = selected?.value.toString() || "";
+                    setSelectedEmployeeId(newId);
+                    if (newId === selectedReportingPersonId) {
+                      setSelectedReportingPersonId("");
+                    }
+                  }}
                   className="text-[13px]"
                   classNamePrefix="react-select"
                 />
@@ -197,13 +201,10 @@ const PMHierarchyPage = () => {
                   New Reporting Person
                 </label>
                 <Select
-                  //   options={userOptions.filter(
-                  //     (x) => x.value !== Number(selectedEmployeeId)
-                  //   )}
                   options={reportingPersonOptions}
                   placeholder="Search reporting person..."
                   value={
-                    userOptions.find(
+                    reportingPersonOptions.find(
                       (x) => x.value === Number(selectedReportingPersonId)
                     ) || null
                   }

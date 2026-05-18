@@ -45,7 +45,8 @@ export const removeMember =
     projectId: number,
     userId: number
   ) => {
-    await axiosInstance.delete(
+    const response = await axiosInstance.delete(
       `/pm/projects/${projectId}/members/${userId}`
     );
+    return response.data;
   };

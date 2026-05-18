@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Users, Clock, CheckCircle2 } from "lucide-react";
 
-import Header from "../../../components/layout/Header";
+import PmHeader from "../../../components/layout/PmHeader";
 import Button from "../../../components/common/Button";
 
 import { getProjectHierarchy, getMyProjectCards } from "../../../api/projectApi";
@@ -56,8 +56,8 @@ const PMProjectWorkspacePage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header
-        title={project?.name ?? "Project Workspace"}
+      <PmHeader
+        title={project?.name ?? "Project Monitoring"}
         subtitle={project?.description ?? "Hierarchy and feedback monitoring"}
       />
 

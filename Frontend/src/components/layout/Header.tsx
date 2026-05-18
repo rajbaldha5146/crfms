@@ -14,6 +14,7 @@ import {
 } from "../../api/notificationApi";
 
 import { useSignalR } from "../../hooks/useSignalR";
+import { usePmLayout } from "../../contexts/PmLayoutContext";
 
 // ROLE NAVIGATION CONFIGURATION
 interface NavConfig {
@@ -32,29 +33,30 @@ const getNavConfig = (role?: string): NavConfig => {
     case "Admin":
       return {
         showWorkspace: true,
-        workspaceRoute: "/admin-dashboard",
+        workspaceRoute: "/admin/users/create",
         showTeamFeedbacks: false,
         teamFeedbacksRoute: "",
-        showReceived: true,
-        showSubmitted: true,
+        showReceived: false,
+        showSubmitted: false,
       };
 
     case "Pm":
+      // PM uses the sidebar for all navigation — no header nav links needed
       return {
-        showWorkspace: true,
-        workspaceRoute: "/pm-projects",
-        showTeamFeedbacks: true,
-        teamFeedbacksRoute: "/pm-monitor",
-        showReceived: true,
-        showSubmitted: true,
+        showWorkspace: false,
+        workspaceRoute: "",
+        showTeamFeedbacks: false,
+        teamFeedbacksRoute: "",
+        showReceived: false,
+        showSubmitted: false,
       };
 
     case "Tl":
       return {
         showWorkspace: true,
-        workspaceRoute: "/workspace",
+        workspaceRoute: "/tl",
         showTeamFeedbacks: true,
-        teamFeedbacksRoute: "/workspace/monitor",
+        teamFeedbacksRoute: "/tl/monitor",
         showReceived: true,
         showSubmitted: true,
       };
@@ -62,10 +64,9 @@ const getNavConfig = (role?: string): NavConfig => {
     case "SeniorDeveloper":
       return {
         showWorkspace: true,
-        workspaceRoute: "/workspace",
-        // Turned OFF for SeniorDeveloper as per your requirement
-        showTeamFeedbacks: false, 
-        teamFeedbacksRoute: "/workspace/monitor",
+        workspaceRoute: "/senior",
+        showTeamFeedbacks: true,
+        teamFeedbacksRoute: "/senior/monitor",
         showReceived: true,
         showSubmitted: true,
       };
@@ -81,7 +82,6 @@ const getNavConfig = (role?: string): NavConfig => {
       };
 
     default:
-      // Fallback for unassigned or standard user roles
       return {
         showWorkspace: false,
         workspaceRoute: "",
@@ -98,15 +98,17 @@ interface HeaderProps {
   title: string;
   subtitle?: string;
   onMenuClick?: () => void;
+  isLayoutHeader?: boolean;
 }
 
-const Header = ({ title, subtitle }: HeaderProps) => {
+const Header = ({ title, subtitle, onMenuClick, isLayoutHeader }: HeaderProps) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ── ALL HOOKS MUST BE CALLED FIRST (Rules of Hooks) ──
+  const pmLayout = usePmLayout();
   const { user, logout } = useAuthStore();
   const { showToast } = useUIStore();
-
   const {
     unreadCount,
     notifications,
@@ -119,10 +121,19 @@ const Header = ({ title, subtitle }: HeaderProps) => {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Use explicit prop first, fall back to sidebar context toggle ONLY if in PM layout
+  const menuClickHandler = onMenuClick ?? (pmLayout.isPmLayout ? pmLayout.toggle : undefined);
+
   // Fetch specific navigation mapping using current user's role
   const navConfig = getNavConfig(user?.role);
 
   useSignalR();
+
+  useEffect(() => {
+    if (pmLayout.isPmLayout && !isLayoutHeader) {
+      pmLayout.setTitle(title, subtitle);
+    }
+  }, [title, subtitle, pmLayout.isPmLayout, isLayoutHeader, pmLayout.setTitle]);
 
   const loadNotifications = async () => {
     try {
@@ -138,6 +149,12 @@ const Header = ({ title, subtitle }: HeaderProps) => {
     loadNotifications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Early return AFTER all hooks ──
+  if (pmLayout.isPmLayout && !isLayoutHeader) {
+    return null; // Avoid duplicate headers in PM Layout
+  }
+
 
   const handleNotificationClick = async (
     notificationId: number,
@@ -182,11 +199,11 @@ const Header = ({ title, subtitle }: HeaderProps) => {
     }
   };
 
-  // Improved highlight check matching dynamic routes cleanly
+  // Highlight "Project Workspace" nav link for any project/dashboard sub-route
   const isWorkspaceActive =
-    location.pathname.includes("projects") ||
-    (location.pathname.startsWith("/workspace") && !location.pathname.includes("monitor")) ||
-    (navConfig.workspaceRoute !== "" && location.pathname.startsWith(navConfig.workspaceRoute));
+    navConfig.workspaceRoute !== "" &&
+    location.pathname.startsWith(navConfig.workspaceRoute) &&
+    !location.pathname.includes("/monitor");
 
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
@@ -225,23 +242,40 @@ const Header = ({ title, subtitle }: HeaderProps) => {
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200/80 px-6 h-16 flex items-center justify-between gap-4">
-      {/* ── Left: Menu + Title ── */}
+      {/* ── Left: Sidebar Toggle (PM) or Mobile Menu + Title ── */}
       <div className="flex items-center gap-3 min-w-0">
-        <button
-          onClick={() => setIsMobileMenuOpen(true)}
-          className="lg:hidden w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-          aria-label="Open menu"
-        >
-          <Menu size={18} />
-        </button>
+        {/* Sidebar toggle — shows for PM layout (via context) or when onMenuClick is passed explicitly */}
+        {menuClickHandler && (
+          <button
+            onClick={menuClickHandler}
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            aria-label="Toggle sidebar"
+          >
+            <Menu size={18} />
+          </button>
+        )}
 
-        <div className="min-w-0">
+        {/* Mobile hamburger for non-PM roles (when no sidebar context) */}
+        {!menuClickHandler && (
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="lg:hidden w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            aria-label="Open menu"
+          >
+            <Menu size={18} />
+          </button>
+        )}
+
+        <div className="min-w-0 flex-1 max-w-[200px] sm:max-w-[300px] md:max-w-[400px] lg:max-w-[500px]">
           <h1 className="text-[15px] font-semibold text-slate-900 leading-tight truncate">
             {title}
           </h1>
           {subtitle && (
-            <p className="text-[12px] text-slate-400 font-medium mt-0.5 truncate hidden sm:block">
-              {subtitle}
+            <p 
+              className="text-[12px] text-slate-400 font-medium mt-0.5 truncate hidden sm:block"
+              title={subtitle}
+            >
+              {subtitle.length > 65 ? `${subtitle.substring(0, 65)}...` : subtitle}
             </p>
           )}
         </div>
@@ -255,14 +289,14 @@ const Header = ({ title, subtitle }: HeaderProps) => {
             className={() => navLinkClass({ isActive: isWorkspaceActive })}
           >
             <FolderKanban size={15} />
-            <span>Project Workspace</span>
+            <span>Project Monitoring</span>
           </NavLink>
         )}
 
         {navConfig.showTeamFeedbacks && (
           <NavLink to={navConfig.teamFeedbacksRoute} className={navLinkClass}>
             <UsersRound size={15} />
-            <span>Team's Feedbacks</span>
+            <span>Team Feedbacks</span>
           </NavLink>
         )}
 
@@ -447,7 +481,7 @@ const Header = ({ title, subtitle }: HeaderProps) => {
                   }
                 >
                   <FolderKanban size={17} />
-                  Workspace
+                  Project Monitoring
                 </NavLink>
               )}
 
@@ -458,7 +492,7 @@ const Header = ({ title, subtitle }: HeaderProps) => {
                   className={mobileNavLinkClass}
                 >
                   <UsersRound size={15} />
-                  <span>Team's Feedbacks</span>
+                  <span>Team Feedbacks</span>
                 </NavLink>
               )}
 

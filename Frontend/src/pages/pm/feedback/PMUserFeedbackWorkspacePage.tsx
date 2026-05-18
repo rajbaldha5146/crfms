@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Clock, CheckCircle2, FileText } from "lucide-react";
-import Header from "../../../components/layout/Header";
+import PmHeader from "../../../components/layout/PmHeader";
 import Button from "../../../components/common/Button";
 import { getUserProjectFeedbacks } from "../../../api/projectApi";
 import ProjectFeedbackCard from "../../../components/project/ProjectFeedbackCard";
@@ -60,7 +60,7 @@ const PMUserFeedbackWorkspacePage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header
+      <PmHeader
         title={data?.user.fullName ?? "User Feedback Workspace"}
         subtitle={data?.user.roleName ?? "Feedback monitoring"}
       />
@@ -207,7 +207,10 @@ const PMUserFeedbackWorkspacePage = () => {
                       onClick={() => navigate(`/feedbacks/${feedback.id}`)}
                       className="cursor-pointer"
                     >
-                      <ProjectFeedbackCard feedback={feedback} />
+                      <ProjectFeedbackCard 
+                        feedback={feedback} 
+                        showBothParticipants={true}
+                      />
                     </div>
                   ))}
                 </div>

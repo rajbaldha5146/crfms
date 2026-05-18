@@ -12,7 +12,7 @@ import {
   import { useEffect, useState } from "react";
   import { useNavigate, useParams } from "react-router-dom";
   
-  import Header from "../../../components/layout/Header";
+  import PmHeader from "../../../components/layout/PmHeader";
   import { getPmUserDetails } from "../../../api/pmHierarchyApi";
   import { useUIStore } from "../../../store/useUIStore";
   
@@ -46,7 +46,7 @@ import {
   
     return (
       <div className="min-h-screen bg-slate-50">
-        <Header
+        <PmHeader
           title={user?.fullName ?? "Employee Details"}
           subtitle="Employee profile and reporting details"
         />

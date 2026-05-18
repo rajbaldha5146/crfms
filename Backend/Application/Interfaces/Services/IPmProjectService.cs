@@ -14,7 +14,7 @@ public interface IPmProjectService
         AssignProjectMembersRequestDto request,
         int pmUserId);
 
-    Task RemoveMemberFromProjectAsync(
+    Task<RemoveProjectMemberResponseDto> RemoveMemberFromProjectAsync(
         int projectId,
         int userId,
         int pmUserId);

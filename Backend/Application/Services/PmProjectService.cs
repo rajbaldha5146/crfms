@@ -285,7 +285,7 @@ AssignProjectMembersAsync(
         };
     }
 
-    public async Task
+    public async Task<RemoveProjectMemberResponseDto>
     RemoveMemberFromProjectAsync(
         int projectId,
         int userId,
@@ -365,5 +365,50 @@ AssignProjectMembersAsync(
 
         await _projectAssignmentRepository
             .SaveChangesAsync();
+
+        // ── Hierarchy Warning Check ──
+        // After removal, check if any remaining members in the project
+        // now have a broken reporting chain because their parent was removed.
+
+        var remainingAssignments =
+            await _projectAssignmentRepository
+                .FindAsync(x =>
+                    x.ProjectId == projectId);
+
+        var remainingUserIds =
+            remainingAssignments
+                .Select(x => x.UserId)
+                .ToHashSet();
+
+        // Get all hierarchy mappings where the removed user was a parent
+        var descendantMappings =
+            await _hierarchyRepository
+                .FindAsync(x =>
+                    x.ParentUserId == userId);
+
+        var warnings = new List<string>();
+
+        foreach (var mapping in descendantMappings)
+        {
+            if (remainingUserIds
+                .Contains(mapping.ChildUserId))
+            {
+                var childUser =
+                    await _userRepository
+                        .GetByIdAsync(
+                            mapping.ChildUserId);
+
+                if (childUser != null)
+                {
+                    warnings.Add(
+                        $"{childUser.FullName} still exists in project but reporting hierarchy is incomplete");
+                }
+            }
+        }
+
+        return new RemoveProjectMemberResponseDto
+        {
+            Warnings = warnings
+        };
     }
 }

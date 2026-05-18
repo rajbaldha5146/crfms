@@ -20,26 +20,15 @@ public class FeedbackController : ControllerBase
     }
 
     [HttpGet("hierarchy")]
-    public async Task<IActionResult>
-    GetHierarchyFeedbacks(
-        [FromQuery]
-        string? status,
-        [FromQuery]
-        int? projectId
-    )
+    public async Task<IActionResult> GetHierarchy(
+        [FromQuery] FeedbackHierarchyFilterDto filter)
     {
-        var userId =
-            UserClaimsHelper.GetUserId(User);
+        var userId = UserClaimsHelper.GetUserId(User);
 
-        var result =
-            await _feedbackService
-                .GetHierarchyFeedbacksAsync(
-                    userId, status, projectId);
+        var result = await _feedbackService.GetHierarchyAsync(userId, filter);
 
         return Ok(
-            ApiResponse<
-                IEnumerable<
-                    ReceivedFeedbackCardDto>>
+            ApiResponse<FeedbackHierarchyResponseDto>
             .SuccessResponse(
                 result,
                 "Hierarchy feedbacks fetched successfully"));
@@ -92,24 +81,15 @@ public class FeedbackController : ControllerBase
     }
 
     [HttpGet("received")]
-    public async Task<IActionResult>
-    GetMyReceivedFeedbacks(
-    [FromQuery]
-    string? status)
+    public async Task<IActionResult> GetMyReceivedFeedbacks(
+        [FromQuery] ReceivedFeedbackFilterDto filter)
     {
-        var userId =
-            UserClaimsHelper.GetUserId(User);
+        var userId = UserClaimsHelper.GetUserId(User);
 
-        // var userId = 29;
-
-        var result =
-            await _feedbackService
-                .GetMyReceivedFeedbacksAsync(userId, status);
+        var result = await _feedbackService.GetMyReceivedFeedbacksAsync(userId, filter);
 
         return Ok(
-            ApiResponse<
-                IEnumerable<
-                    ReceivedFeedbackCardDto>>
+            ApiResponse<ReceivedFeedbackResponseDto>
             .SuccessResponse(
                 result,
                 "Received feedbacks fetched successfully"));
@@ -162,26 +142,15 @@ public class FeedbackController : ControllerBase
     }
 
     [HttpGet("submitted")]
-    public async Task<IActionResult>
-    GetSubmittedFeedbacks(
-        [FromQuery]
-        string? status
-    )
+    public async Task<IActionResult> GetSubmittedFeedbacks(
+        [FromQuery] SubmittedFeedbackFilterDto filter)
     {
-        var userId =
-            UserClaimsHelper.GetUserId(User);
+        var userId = UserClaimsHelper.GetUserId(User);
 
-        // var userId = 30;
-
-        var result =
-            await _feedbackService
-                .GetSubmittedFeedbacksAsync(
-                    userId,status);
+        var result = await _feedbackService.GetSubmittedFeedbacksAsync(userId, filter);
 
         return Ok(
-            ApiResponse<
-                IEnumerable<
-                    SubmittedFeedbackCardDto>>
+            ApiResponse<SubmittedFeedbackResponseDto>
             .SuccessResponse(
                 result,
                 "Submitted feedbacks fetched successfully"));

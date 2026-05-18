@@ -507,173 +507,124 @@ public class FeedbackService : IFeedbackService
                 });
     }
 
-    public async Task<
-    IEnumerable<ReceivedFeedbackCardDto>>
-    GetMyReceivedFeedbacksAsync(
+    public async Task<ReceivedFeedbackResponseDto> GetMyReceivedFeedbacksAsync(
         int userId,
-        string? status)
+        ReceivedFeedbackFilterDto filter)
     {
-        // Get Feedbacks
-
-        var feedbacks =
-            await _feedbackRepository
-                .FindAsync(x =>
-                    x.RevieweeUserId == userId
-                    &&
-                    !x.IsDeleted
-                    &&
-                    (
-                        string.IsNullOrWhiteSpace(
-                            status)
-                        ||
-                        x.Status.ToString()
-                            .ToLower() ==
-                        status.ToLower()
-                    ));
+        // 1. Fetch ALL feedbacks for this reviewee in one query (no status filter in DB)
+        var feedbacks = (await _feedbackRepository.FindAsync(x =>
+            x.RevieweeUserId == userId &&
+            !x.IsDeleted
+        )).ToList();
 
         if (!feedbacks.Any())
         {
-            return Enumerable.Empty<
-                ReceivedFeedbackCardDto>();
+            return new ReceivedFeedbackResponseDto { CurrentPage = filter.Page };
         }
 
-        // Related IDs
+        // 2. Load related data up front (needed for dropdowns AND mapping)
+        var projectIds  = feedbacks.Select(x => x.ProjectId).Distinct().ToList();
+        var reviewerIds = feedbacks.Select(x => x.ReviewerUserId).Distinct().ToList();
+        var revieweeIds = feedbacks.Select(x => x.RevieweeUserId).Distinct().ToList();
 
-        var feedbackIds =
-            feedbacks
-                .Select(x => x.Id)
-                .Distinct()
-                .ToList();
+        var projects  = (await _projectRepository.FindAsync(x => projectIds.Contains(x.Id))).ToList();
+        var users     = (await _userRepository.FindAsync(x => reviewerIds.Contains(x.Id) || revieweeIds.Contains(x.Id))).ToList();
+        var roles     = (await _roleRepository.GetAllAsync()).ToList();
 
-        var projectIds =
-            feedbacks
-                .Select(x => x.ProjectId)
-                .Distinct()
-                .ToList();
+        var projectDictionary = projects.ToDictionary(x => x.Id, x => x);
+        var userDictionary    = users.ToDictionary(x => x.Id, x => x);
+        var roleDictionary    = roles.ToDictionary(x => x.Id, x => x.RoleName.ToString());
 
-        var reviewerIds =
-            feedbacks
-                .Select(x => x.ReviewerUserId)
-                .Distinct()
-                .ToList();
+        // 3. Apply in-memory filters
 
-        var revieweeIds =
-            feedbacks
-                .Select(x => x.RevieweeUserId)
-                .Distinct()
-                .ToList();
+        // Project filter
+        if (filter.ProjectId.HasValue)
+            feedbacks = feedbacks.Where(x => x.ProjectId == filter.ProjectId.Value).ToList();
 
-        // Load Projects
+        // Reviewer filter
+        if (filter.ReviewerId.HasValue)
+            feedbacks = feedbacks.Where(x => x.ReviewerUserId == filter.ReviewerId.Value).ToList();
 
-        var projects =
-            await _projectRepository
-                .FindAsync(x =>
-                    projectIds.Contains(x.Id));
+        // Date range filter
+        if (filter.StartDate.HasValue)
+            feedbacks = feedbacks.Where(x => x.CreatedAt >= filter.StartDate.Value).ToList();
 
-        // Load Reviewers And Reviewee
+        if (filter.EndDate.HasValue)
+            feedbacks = feedbacks.Where(x => x.CreatedAt <= filter.EndDate.Value).ToList();
 
-        var users =
-            await _userRepository
-                .FindAsync(x =>
-                    reviewerIds.Contains(x.Id)
-                    ||
-                    revieweeIds.Contains(x.Id));
+        // 4. Build dropdown options from the post-filter set (before status filter for full context)
+        var projectDropdowns = feedbacks
+            .Select(x => x.ProjectId)
+            .Distinct()
+            .Where(id => projectDictionary.ContainsKey(id))
+            .Select(id => new DropdownDto { Id = id, Name = projectDictionary[id].Name })
+            .OrderBy(x => x.Name)
+            .ToList();
 
-        // Load Roles
+        var reviewerDropdowns = feedbacks
+            .Select(x => x.ReviewerUserId)
+            .Distinct()
+            .Where(id => userDictionary.ContainsKey(id))
+            .Select(id => new DropdownDto { Id = id, Name = userDictionary[id].FullName })
+            .OrderBy(x => x.Name)
+            .ToList();
 
-        var roles =
-            await _roleRepository
-                .GetAllAsync();
+        // 5. Compute stats BEFORE applying status filter
+        var openCount     = feedbacks.Count(x => x.Status == FeedbackStatus.Open);
+        var resolvedCount = feedbacks.Count(x => x.Status == FeedbackStatus.Resolved);
+        var totalCount    = feedbacks.Count;
 
-        // Load Resolutions
+        // 6. Apply status filter for the items list
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            var parsedStatus = Enum.Parse<FeedbackStatus>(filter.Status, true);
+            feedbacks = feedbacks.Where(x => x.Status == parsedStatus).ToList();
+        }
 
-        var resolutions =
-            await _feedbackResolutionRepository
-                .FindAsync(x =>
-                    feedbackIds.Contains(
-                        x.FeedbackId));
+        // 7. Sort + Pagination
+        var sorted = feedbacks.OrderByDescending(x => x.CreatedAt).ToList();
+        var pagedFeedbacks = sorted
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .ToList();
 
-        // Dictionaries
+        var totalPages = (int)Math.Ceiling(feedbacks.Count / (double)filter.PageSize);
 
-        var projectDictionary =
-            projects.ToDictionary(
-                x => x.Id,
-                x => x.Name);
+        // 8. Load resolutions only for the paged set
+        var pagedIds = pagedFeedbacks.Select(x => x.Id).ToList();
+        var resolutions = await _feedbackResolutionRepository.FindAsync(x => pagedIds.Contains(x.FeedbackId));
+        var resolutionDictionary = resolutions
+            .GroupBy(x => x.FeedbackId)
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(r => r.CreatedAt).First());
 
-        var userDictionary =
-            users.ToDictionary(
-                x => x.Id,
-                x => x);
+        // 9. Map to DTOs
+        var items = pagedFeedbacks.Select(x => new ReceivedFeedbackCardDto
+        {
+            Id              = x.Id,
+            ProjectName     = projectDictionary.ContainsKey(x.ProjectId) ? projectDictionary[x.ProjectId].Name : string.Empty,
+            ReviewerName    = userDictionary.ContainsKey(x.ReviewerUserId) ? userDictionary[x.ReviewerUserId].FullName : string.Empty,
+            RevieweeName    = userDictionary.ContainsKey(x.RevieweeUserId) ? userDictionary[x.RevieweeUserId].FullName : string.Empty,
+            ReviewerRole    = userDictionary.ContainsKey(x.ReviewerUserId) && roleDictionary.ContainsKey(userDictionary[x.ReviewerUserId].RoleId)
+                                ? roleDictionary[userDictionary[x.ReviewerUserId].RoleId]
+                                : string.Empty,
+            Title           = x.Title,
+            Status          = x.Status.ToString(),
+            ResolutionMessage    = resolutionDictionary.ContainsKey(x.Id) ? resolutionDictionary[x.Id].Message    : null,
+            ResolutionCreatedAt  = resolutionDictionary.ContainsKey(x.Id) ? resolutionDictionary[x.Id].CreatedAt  : null,
+            CreatedAt       = x.CreatedAt
+        }).ToList();
 
-        var roleDictionary =
-            roles.ToDictionary(
-                x => x.Id,
-                x => x.RoleName.ToString());
-
-        // Latest resolution per feedback
-
-        var resolutionDictionary =
-            resolutions
-                .GroupBy(x => x.FeedbackId)
-                .ToDictionary(
-                    x => x.Key,
-                    x => x
-                        .OrderByDescending(r =>
-                            r.CreatedAt)
-                        .First());
-
-        // Response
-
-        return feedbacks
-            .OrderByDescending(x => x.CreatedAt)
-            .Select(x => new ReceivedFeedbackCardDto
-            {
-                Id = x.Id,
-
-                ProjectName =
-                    projectDictionary[
-                        x.ProjectId],
-
-                ReviewerName =
-                    userDictionary[
-                        x.ReviewerUserId]
-                        .FullName,
-
-                RevieweeName =
-                    userDictionary[
-                        x.RevieweeUserId]
-                        .FullName,
-
-
-                ReviewerRole =
-                    roleDictionary[
-                        userDictionary[
-                            x.ReviewerUserId]
-                        .RoleId],
-
-                Title =
-                    x.Title,
-
-                Status =
-                    x.Status.ToString(),
-
-                ResolutionMessage =
-                    resolutionDictionary
-                        .ContainsKey(x.Id)
-                        ? resolutionDictionary[x.Id]
-                            .Message
-                        : null,
-
-                ResolutionCreatedAt =
-                    resolutionDictionary
-                        .ContainsKey(x.Id)
-                        ? resolutionDictionary[x.Id]
-                            .CreatedAt
-                        : null,
-
-                CreatedAt =
-                    x.CreatedAt
-            });
+        return new ReceivedFeedbackResponseDto
+        {
+            Items         = items,
+            OpenCount     = openCount,
+            ResolvedCount = resolvedCount,
+            TotalCount    = totalCount,
+            Projects      = projectDropdowns,
+            Reviewers     = reviewerDropdowns,
+            CurrentPage   = filter.Page,
+            TotalPages    = totalPages
+        };
     }
 
     public async Task<FeedbackDetailDto>
@@ -982,159 +933,121 @@ public class FeedbackService : IFeedbackService
                 });
     }
 
-    public async Task<
-    IEnumerable<SubmittedFeedbackCardDto>>
-    GetSubmittedFeedbacksAsync(
+    public async Task<SubmittedFeedbackResponseDto> GetSubmittedFeedbacksAsync(
         int loggedInUserId,
-        string? status)
+        SubmittedFeedbackFilterDto filter)
     {
-        // Get Feedbacks
-
-        var feedbacks =
-            await _feedbackRepository
-                .FindAsync(x =>
-                    x.ReviewerUserId ==
-                    loggedInUserId
-                    &&
-                    !x.IsDeleted
-                    &&
-                    (
-                        string.IsNullOrWhiteSpace(
-                            status)
-                        ||
-                        x.Status.ToString()
-                            .ToLower() ==
-                        status.ToLower()
-                    ));
+        // 1. Fetch ALL feedbacks where user is reviewer (no status filter in DB)
+        var feedbacks = (await _feedbackRepository.FindAsync(x =>
+            x.ReviewerUserId == loggedInUserId &&
+            !x.IsDeleted
+        )).ToList();
 
         if (!feedbacks.Any())
         {
-            return Enumerable.Empty<
-                SubmittedFeedbackCardDto>();
+            return new SubmittedFeedbackResponseDto { CurrentPage = filter.Page };
         }
 
-        // Related IDs
+        // 2. Load related data up front
+        var projectIds  = feedbacks.Select(x => x.ProjectId).Distinct().ToList();
+        var revieweeIds = feedbacks.Select(x => x.RevieweeUserId).Distinct().ToList();
 
-        var feedbackIds =
-            feedbacks
-                .Select(x => x.Id)
-                .Distinct()
-                .ToList();
+        var projects  = (await _projectRepository.FindAsync(x => projectIds.Contains(x.Id))).ToList();
+        var users     = (await _userRepository.FindAsync(x => revieweeIds.Contains(x.Id))).ToList();
 
-        var projectIds =
-            feedbacks
-                .Select(x => x.ProjectId)
-                .Distinct()
-                .ToList();
+        var projectDictionary = projects.ToDictionary(x => x.Id, x => x);
+        var userDictionary    = users.ToDictionary(x => x.Id, x => x);
 
-        var reviewerIds =
-            feedbacks
-                .Select(x => x.ReviewerUserId)
-                .Distinct()
-                .ToList();
+        // 3. Apply in-memory filters
 
-        var revieweeIds =
-            feedbacks
-                .Select(x => x.RevieweeUserId)
-                .Distinct()
-                .ToList();
+        // Project filter
+        if (filter.ProjectId.HasValue)
+            feedbacks = feedbacks.Where(x => x.ProjectId == filter.ProjectId.Value).ToList();
 
-        // Load Projects
+        // Reviewee filter
+        if (filter.RevieweeId.HasValue)
+            feedbacks = feedbacks.Where(x => x.RevieweeUserId == filter.RevieweeId.Value).ToList();
 
-        var projects =
-            await _projectRepository
-                .FindAsync(x =>
-                    projectIds.Contains(x.Id));
+        // Date range filter
+        if (filter.StartDate.HasValue)
+            feedbacks = feedbacks.Where(x => x.CreatedAt >= filter.StartDate.Value).ToList();
 
-        // Load Users
+        if (filter.EndDate.HasValue)
+            feedbacks = feedbacks.Where(x => x.CreatedAt <= filter.EndDate.Value).ToList();
 
-        var users =
-            await _userRepository
-                .FindAsync(x =>
-                    reviewerIds.Contains(x.Id)
-                    ||
-                    revieweeIds.Contains(x.Id));
+        // 4. Build dropdown options from the post-filter set (before status filter for full context)
+        var projectDropdowns = feedbacks
+            .Select(x => x.ProjectId)
+            .Distinct()
+            .Where(id => projectDictionary.ContainsKey(id))
+            .Select(id => new DropdownDto { Id = id, Name = projectDictionary[id].Name })
+            .OrderBy(x => x.Name)
+            .ToList();
 
-        // Load Resolutions
+        var revieweeDropdowns = feedbacks
+            .Select(x => x.RevieweeUserId)
+            .Distinct()
+            .Where(id => userDictionary.ContainsKey(id))
+            .Select(id => new DropdownDto { Id = id, Name = userDictionary[id].FullName })
+            .OrderBy(x => x.Name)
+            .ToList();
 
-        var resolutions =
-            await _feedbackResolutionRepository
-                .FindAsync(x =>
-                    feedbackIds.Contains(
-                        x.FeedbackId));
+        // 5. Compute stats BEFORE applying status filter
+        var openCount     = feedbacks.Count(x => x.Status == FeedbackStatus.Open);
+        var resolvedCount = feedbacks.Count(x => x.Status == FeedbackStatus.Resolved);
+        var totalCount    = feedbacks.Count;
 
-        // Dictionaries
+        // 6. Apply status filter for the items list
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            var parsedStatus = Enum.Parse<FeedbackStatus>(filter.Status, true);
+            feedbacks = feedbacks.Where(x => x.Status == parsedStatus).ToList();
+        }
 
-        var projectDictionary =
-            projects.ToDictionary(
-                x => x.Id,
-                x => x.Name);
+        // 7. Sort + Pagination
+        var sorted = feedbacks.OrderByDescending(x => x.CreatedAt).ToList();
+        var pagedFeedbacks = sorted
+            .Skip((filter.Page - 1) * filter.PageSize)
+            .Take(filter.PageSize)
+            .ToList();
 
-        var userDictionary =
-            users.ToDictionary(
-                x => x.Id,
-                x => x.FullName);
+        var totalPages = (int)Math.Ceiling(feedbacks.Count / (double)filter.PageSize);
 
-        // Latest resolution per feedback
+        // 8. Load resolutions only for the paged set
+        var pagedIds = pagedFeedbacks.Select(x => x.Id).ToList();
+        var resolutions = await _feedbackResolutionRepository.FindAsync(x => pagedIds.Contains(x.FeedbackId));
+        var resolutionDictionary = resolutions
+            .GroupBy(x => x.FeedbackId)
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(r => r.CreatedAt).First());
 
-        var resolutionDictionary =
-            resolutions
-                .GroupBy(x => x.FeedbackId)
-                .ToDictionary(
-                    x => x.Key,
-                    x => x
-                        .OrderByDescending(r =>
-                            r.CreatedAt)
-                        .First());
+        // 9. Map to DTOs
+        var items = pagedFeedbacks.Select(x => new SubmittedFeedbackCardDto
+        {
+            Id              = x.Id,
+            ProjectName     = projectDictionary.ContainsKey(x.ProjectId) ? projectDictionary[x.ProjectId].Name : string.Empty,
+            ReviewerName    = string.Empty, // Context is self, don't necessarily need this, but to be safe we can leave it empty or fetch self. The DTO expects it?
+            RevieweeName    = userDictionary.ContainsKey(x.RevieweeUserId) ? userDictionary[x.RevieweeUserId].FullName : string.Empty,
+            Title           = x.Title,
+            Status          = x.Status.ToString(),
+            ResolutionMessage    = resolutionDictionary.ContainsKey(x.Id) ? resolutionDictionary[x.Id].Message    : null,
+            ResolutionCreatedAt  = resolutionDictionary.ContainsKey(x.Id) ? resolutionDictionary[x.Id].CreatedAt  : null,
+            CreatedAt       = x.CreatedAt
+        }).ToList();
 
-        // Response
-
-        return feedbacks
-            .OrderByDescending(x =>
-                x.CreatedAt)
-            .Select(x =>
-                new SubmittedFeedbackCardDto
-                {
-                    Id = x.Id,
-
-                    ProjectName =
-                        projectDictionary[
-                            x.ProjectId],
-
-                    ReviewerName =
-                        userDictionary[
-                            x.ReviewerUserId],
-
-                    RevieweeName =
-                        userDictionary[
-                            x.RevieweeUserId],
-
-                    Title =
-                        x.Title,
-
-                    Status =
-                        x.Status.ToString(),
-
-                    ResolutionMessage =
-                        resolutionDictionary
-                            .ContainsKey(x.Id)
-                            ? resolutionDictionary[x.Id]
-                                .Message
-                            : null,
-
-                    ResolutionCreatedAt =
-                        resolutionDictionary
-                            .ContainsKey(x.Id)
-                            ? resolutionDictionary[x.Id]
-                                .CreatedAt
-                            : null,
-
-                    CreatedAt =
-                        x.CreatedAt
-                });
+        return new SubmittedFeedbackResponseDto
+        {
+            Items         = items,
+            OpenCount     = openCount,
+            ResolvedCount = resolvedCount,
+            TotalCount    = totalCount,
+            Projects      = projectDropdowns,
+            Reviewees     = revieweeDropdowns,
+            CurrentPage   = filter.Page,
+            TotalPages    = totalPages
+        };
     }
 
-    public async Task<IEnumerable<ReceivedFeedbackCardDto>> GetHierarchyFeedbacksAsync(int loggedInUserId, string? status, int? projectId)
+    public async Task<FeedbackHierarchyResponseDto> GetHierarchyAsync(int loggedInUserId, FeedbackHierarchyFilterDto filter)
     {
         // 1. Get all hierarchy mappings
         var allMappings = await _hierarchyRepository.GetAllAsync();
@@ -1144,54 +1057,100 @@ public class FeedbackService : IFeedbackService
 
         if (!descendantUserIds.Any())
         {
-            return Enumerable.Empty<ReceivedFeedbackCardDto>();
+            return new FeedbackHierarchyResponseDto();
         }
 
-        // 3. Find all feedbacks where the Reviewee is one of the descendants
-        var feedbacks = await _feedbackRepository.FindAsync(x =>
+        // 3. Fetch ALL feedbacks for descendants in ONE DB query (no status filter here)
+        var feedbacks = (await _feedbackRepository.FindAsync(x =>
             descendantUserIds.Contains(x.RevieweeUserId) &&
-            !x.IsDeleted &&
-            (string.IsNullOrWhiteSpace(status) || x.Status.ToString().ToLower() == status.ToLower()) &&
-            (!projectId.HasValue || x.ProjectId == projectId.Value)
-        );
+            !x.IsDeleted
+        )).ToList();
+
+        // 4. Apply in-memory filters
+
+        // Project filter
+        if (filter.ProjectId.HasValue)
+        {
+            feedbacks = feedbacks
+                .Where(x => x.ProjectId == filter.ProjectId.Value)
+                .ToList();
+        }
+
+        // Reviewer filter
+        if (filter.ReviewerId.HasValue)
+        {
+            feedbacks = feedbacks
+                .Where(x => x.ReviewerUserId == filter.ReviewerId.Value)
+                .ToList();
+        }
+
+        // Reviewee filter
+        if (filter.RevieweeId.HasValue)
+        {
+            feedbacks = feedbacks
+                .Where(x => x.RevieweeUserId == filter.RevieweeId.Value)
+                .ToList();
+        }
+
+        // Date range filter
+        if (filter.StartDate.HasValue)
+        {
+            feedbacks = feedbacks
+                .Where(x => x.CreatedAt >= filter.StartDate.Value)
+                .ToList();
+        }
+
+        if (filter.EndDate.HasValue)
+        {
+            feedbacks = feedbacks
+                .Where(x => x.CreatedAt <= filter.EndDate.Value)
+                .ToList();
+        }
+
+        // 5. Compute stats BEFORE applying status filter (so counts reflect full scope)
+        var openCount = feedbacks.Count(x => x.Status == FeedbackStatus.Open);
+        var resolvedCount = feedbacks.Count(x => x.Status == FeedbackStatus.Resolved);
+        var totalCount = feedbacks.Count;
+
+        // 6. Now apply status filter for the displayed list
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            var parsedStatus = Enum.Parse<FeedbackStatus>(filter.Status, true);
+            feedbacks = feedbacks
+                .Where(x => x.Status == parsedStatus)
+                .ToList();
+        }
 
         if (!feedbacks.Any())
         {
-            return Enumerable.Empty<ReceivedFeedbackCardDto>();
+            return new FeedbackHierarchyResponseDto
+            {
+                OpenCount = openCount,
+                ResolvedCount = resolvedCount,
+                TotalCount = totalCount
+            };
         }
 
-        // Related IDs
+        // 7. Load related data
         var feedbackIds = feedbacks.Select(x => x.Id).Distinct().ToList();
         var projectIds = feedbacks.Select(x => x.ProjectId).Distinct().ToList();
         var reviewerIds = feedbacks.Select(x => x.ReviewerUserId).Distinct().ToList();
         var revieweeIds = feedbacks.Select(x => x.RevieweeUserId).Distinct().ToList();
 
-        // Load Projects
         var projects = await _projectRepository.FindAsync(x => projectIds.Contains(x.Id));
-
-        // Load Reviewers And Reviewee
         var users = await _userRepository.FindAsync(x => reviewerIds.Contains(x.Id) || revieweeIds.Contains(x.Id));
-
-        // Load Roles
         var roles = await _roleRepository.GetAllAsync();
-
-        // Load Resolutions
         var resolutions = await _feedbackResolutionRepository.FindAsync(x => feedbackIds.Contains(x.FeedbackId));
 
-        // Dictionaries
         var projectDictionary = projects.ToDictionary(x => x.Id, x => x.Name);
         var userDictionary = users.ToDictionary(x => x.Id, x => x);
         var roleDictionary = roles.ToDictionary(x => x.Id, x => x.RoleName.ToString());
-
-        // Latest resolution per feedback
         var resolutionDictionary = resolutions
             .GroupBy(x => x.FeedbackId)
-            .ToDictionary(
-                x => x.Key,
-                x => x.OrderByDescending(r => r.CreatedAt).First());
+            .ToDictionary(x => x.Key, x => x.OrderByDescending(r => r.CreatedAt).First());
 
-        // Response
-        return feedbacks.OrderByDescending(x => x.CreatedAt).Select(x => new ReceivedFeedbackCardDto
+        // 8. Map to DTOs
+        var feedbackDtos = feedbacks.OrderByDescending(x => x.CreatedAt).Select(x => new ReceivedFeedbackCardDto
         {
             Id = x.Id,
             ProjectName = projectDictionary[x.ProjectId],
@@ -1203,6 +1162,14 @@ public class FeedbackService : IFeedbackService
             ResolutionMessage = resolutionDictionary.ContainsKey(x.Id) ? resolutionDictionary[x.Id].Message : null,
             ResolutionCreatedAt = resolutionDictionary.ContainsKey(x.Id) ? resolutionDictionary[x.Id].CreatedAt : null,
             CreatedAt = x.CreatedAt
-        });
+        }).ToList();
+
+        return new FeedbackHierarchyResponseDto
+        {
+            Feedbacks = feedbackDtos,
+            OpenCount = openCount,
+            ResolvedCount = resolvedCount,
+            TotalCount = totalCount
+        };
     }
 }

@@ -19,6 +19,8 @@ export interface FeedbackCardDto {
 
   revieweeName : string;
 
+  projectName?: string;
+
   title: string;
 
   status: string;

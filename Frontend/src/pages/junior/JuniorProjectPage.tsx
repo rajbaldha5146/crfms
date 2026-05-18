@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Clock, CheckCircle2, FileText, Inbox } from "lucide-react";
@@ -19,7 +18,7 @@ const JuniorProjectPage = () => {
   const [project, setProject] = useState<ProjectCardDto | null>(null);
   const [feedbacks, setFeedbacks] = useState<ReceivedFeedbackCardDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [openCount, setOpenCount] = useState(0);
+  const [openCount,setOpenCount] = useState(0);
   const [resolvedCount, setResolvedCount] = useState(0);
 
   // Load project name for the header
@@ -33,31 +32,20 @@ const JuniorProjectPage = () => {
     }
   };
 
-  // Load only feedbacks that belong to this project
-  // getReceivedFeedbacks returns all received feedbacks; we filter client-side by projectName
-  // This avoids a new API endpoint since the DTO already has projectName
+  // ONE call — new API returns items + stats filtered by projectId
   const loadFeedbacks = async () => {
     try {
       setIsLoading(true);
 
-      // Load all at once to derive counts accurately
-      const openResponse = await getReceivedFeedbacks("open");
-      const resolvedResponse = await getReceivedFeedbacks("resolved");
+      const response = await getReceivedFeedbacks({
+        status,
+        projectId: projectId ? Number(projectId) : undefined,
+      });
 
-      // Filter to this project only using the projectId we have
-      // We match by comparing against the project's name (which we fetched)
-      // But more accurately, we filter after loading the project
-      const allOpen = openResponse.data;
-      const allResolved = resolvedResponse.data;
-
-      setOpenCount(allOpen.length);
-      setResolvedCount(allResolved.length);
-
-      if (status === "open") {
-        setFeedbacks(allOpen);
-      } else {
-        setFeedbacks(allResolved);
-      }
+      const d = response.data;
+      setFeedbacks(d?.items ?? []);
+      setOpenCount(d?.openCount ?? 0);
+      setResolvedCount(d?.resolvedCount ?? 0);
     } catch (err) {
       console.error("Failed to load feedbacks", err);
     } finally {
@@ -78,19 +66,6 @@ const JuniorProjectPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, projectId]);
 
-  // Filter feedbacks to only show those from this project
-  // Since ReceivedFeedbackCardDto has projectName, we compare after loading the project
-  const projectFeedbacks = project
-    ? feedbacks.filter((f) => f.projectName === project.name)
-    : feedbacks;
-
-  const projectOpenCount = project
-    ? feedbacks.filter((f) => f.projectName === project.name && f.status === "Open").length
-    : openCount;
-
-  const projectResolvedCount = project
-    ? feedbacks.filter((f) => f.projectName === project.name && f.status === "Resolved").length
-    : resolvedCount;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -125,7 +100,7 @@ const JuniorProjectPage = () => {
                   Open Feedbacks
                 </p>
                 <p className="text-[28px] font-bold text-slate-900 leading-none mt-1">
-                  {projectOpenCount}
+                  {openCount}
                 </p>
               </div>
             </div>
@@ -140,7 +115,7 @@ const JuniorProjectPage = () => {
                   Resolved
                 </p>
                 <p className="text-[28px] font-bold text-slate-900 leading-none mt-1">
-                  {projectResolvedCount}
+                  {resolvedCount}
                 </p>
               </div>
             </div>
@@ -155,7 +130,7 @@ const JuniorProjectPage = () => {
                   Total
                 </p>
                 <p className="text-[28px] font-bold text-slate-900 leading-none mt-1">
-                  {projectOpenCount + projectResolvedCount}
+                  {openCount + resolvedCount}
                 </p>
               </div>
             </div>
@@ -191,7 +166,7 @@ const JuniorProjectPage = () => {
             <div className="spinner-gradient" />
             <p className="text-[13px] text-slate-400 font-medium">Loading your feedbacks…</p>
           </div>
-        ) : projectFeedbacks.length === 0 ? (
+        ) : feedbacks.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center shadow-sm">
             <div className="w-16 h-16 rounded-2xl bg-slate-50 mx-auto flex items-center justify-center mb-6">
               <Inbox size={28} className="text-slate-300" />
@@ -205,7 +180,7 @@ const JuniorProjectPage = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {projectFeedbacks.map((feedback) => (
+            {feedbacks.map((feedback) => (
               <div
                 key={feedback.id}
                 onClick={() => navigate(`/feedbacks/${feedback.id}`)}

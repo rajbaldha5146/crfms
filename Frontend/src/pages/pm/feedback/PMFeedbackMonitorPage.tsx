@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Header from "../../../components/layout/Header";
+import PmHeader from "../../../components/layout/PmHeader";
 import { getMyProjectCards } from "../../../api/projectApi";
 import { useFeedbackStore } from "../../../store/useFeedbackStore";
 import { useUIStore } from "../../../store/useUIStore";
@@ -44,8 +44,8 @@ const PMProjectsOverviewPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header
-        title="My Projects"
+      <PmHeader
+        title="Project Monitoring"
         subtitle="Overview of assigned projects and feedback activity"
       />
 
@@ -70,7 +70,7 @@ const PMProjectsOverviewPage = () => {
           <>
             {/* Page heading */}
             <div className="mb-8">
-              <h2 className="text-[22px] font-semibold text-slate-900">Project Workspace</h2>
+              <h2 className="text-[22px] font-semibold text-slate-900">Project Monitoring</h2>
               <p className="text-[13px] text-slate-500 mt-1">
                 Monitor project activity and feedback statistics
               </p>

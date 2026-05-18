@@ -8,13 +8,13 @@ public interface IFeedbackService
 
     Task<IEnumerable<ReviewableUserResponseDto>> GetReviewableUsersAsync(int projectId, string? search, int reviewerUserId);
 
-    Task<IEnumerable<ReceivedFeedbackCardDto>> GetMyReceivedFeedbacksAsync(int userId,string? status);
+    Task<ReceivedFeedbackResponseDto> GetMyReceivedFeedbacksAsync(int userId, ReceivedFeedbackFilterDto filter);
 
     Task<FeedbackDetailDto> GetFeedbackDetailsAsync(int feedbackId, int loggedInUserId);
 
     Task ResolveFeedbackAsync(int feedbackId, int loggedInUserId, ResolveFeedbackRequestDto request);
 
-    Task<IEnumerable<SubmittedFeedbackCardDto>> GetSubmittedFeedbacksAsync(int loggedInUserId,string? status);
+    Task<SubmittedFeedbackResponseDto> GetSubmittedFeedbacksAsync(int loggedInUserId, SubmittedFeedbackFilterDto filter);
 
-    Task<IEnumerable<ReceivedFeedbackCardDto>> GetHierarchyFeedbacksAsync(int loggedInUserId, string? status, int? projectId);
+    Task<FeedbackHierarchyResponseDto> GetHierarchyAsync(int loggedInUserId, FeedbackHierarchyFilterDto filter);
 }
